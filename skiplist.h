@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <iostream>
 #include <fstream>
-#include <string>
+#include <cstring>
 #include <mutex>
 #include <cmath>
 
