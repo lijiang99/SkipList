@@ -1,14 +1,14 @@
 #ifndef SKIPLIST_H
 #define SKIPLIST_H
 
+#ifndef NDEBUG
 #include <iostream>
 #include <iomanip>
+#endif
+
 #include <iterator>
 #include <memory>
 #include <cstring>
-#include <string>
-#include <strings.h>
-#include <utility>
 
 // skiplist的节点
 template <typename Value>
@@ -149,9 +149,14 @@ class skiplist {
 
 		// 将节点插入跳表中，并保证节点唯一
 		std::pair<iterator, bool> insert_unique(const value_type &val);
+		// 将一对迭代器[first, last)表示的范围内的数据插入跳表中
+		template <typename InputIterator>
+		void insert_unique(InputIterator first, InputIterator last);
 		// iterator insert_equal(const value_type &val);
+
 		// 根据key在跳表中查找节点
 		iterator find(const key_type &k);
+
 		// 根据key在跳表中删除节点
 		void erase(const key_type &k) {
 #ifndef NDEBUG
@@ -218,6 +223,16 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) 
 		return std::pair<iterator, bool>(current, false);
 	}
 	return std::pair<iterator, bool>(__insert(update, val), true);
+}
+
+// 将一对迭代器[first, last)表示的范围内的数据插入跳表中
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+template <typename InputIterator>
+void skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(InputIterator first, InputIterator last) {
+	while (first != last) {
+		insert_unique(*first);
+		++first;
+	}
 }
 
 /*
