@@ -1,423 +1,350 @@
 #ifndef SKIPLIST_H
 #define SKIPLIST_H
 
-#include <iomanip>
 #include <iostream>
-#include <fstream>
+#include <iomanip>
+#include <iterator>
+#include <memory>
 #include <cstring>
-#include <mutex>
-#include <cmath>
+#include <string>
+#include <strings.h>
+#include <utility>
 
-std::mutex mtx; // 互斥锁
+// skiplist的节点
+template <typename Value>
+struct __skiplist_node {
+	typedef __skiplist_node<Value>* link_type;
 
-// 检查str是否为有效输入，key和value的默认分隔符为":"
-static bool is_valid_string(const std::string &str, const std::string &delimiter = ":") {
-	return (str.empty() || str.find(delimiter) == std::string::npos) ? false : true;
-}
+	// 节点值
+	Value value_field;
+	// 节点层级
+	size_t level;
+	// forward是大小为level+1的数组
+	// 元素为指针，指向当前节点在每层的后继节点
+	link_type *forward;
 
-// 从字符串str中提取key和value
-static void string_to_kv(const std::string &str, std::string &key, std::string &value,
-		const std::string &delimiter = ":") {
-	if (!is_valid_string(str)) return;
-	std::string::size_type pos = str.find(delimiter);
-	key = str.substr(0, pos);
-	value = str.substr(pos+1);
-}
+	// 构造函数
+	__skiplist_node(Value value_field, size_t level) : value_field(value_field), level(level) {
+		// forward的大小为level+1，因为层数从0开始
+		forward = new link_type[level+1];
+		// 初始化分配的内存空间，将内存清零
+		bzero(forward, sizeof(link_type)*(level+1));
+	} 
+	// 析构函数，释放forward指向的动态分配的内存
+	~__skiplist_node() { delete [] forward; }
+};
 
-// 链表中的节点类
-template <typename K, typename V>
-class Node {
-	private:
-		K key; // 键
-		V value; // 值
-		int node_level; // 节点所在层级
-
+// skiplist的迭代器
+template <typename Value, typename Ref, typename Ptr>
+class __skiplist_iterator {
 	public:
-		// forward为一个数组，根据node_level的大小分配空间
-		// 数组的每个元素类型为Node<K, V>*，即一个指向节点的指针
-		Node<K, V> **forward;
-		// 当索引为i时，forward[i]表示当前节点在第i层时，该节点的后继节点的位置
-		// 如下，key为1的节点在level=1时，其下一个节点为key为2的节点
-		// 所以key为1的节点的forward[1]为指向key为2的节点的指针
-		/*
-		 * level 4:           2:B
-		 * level 3:           2:B
-		 * level 2:           2:B           4:D           6:F
-		 * level 1:    1:A    2:B           4:D    5:E    6:F
-		 * level 0:    1:A    2:B    3:C    4:D    5:E    6:F
-		 */
+		// 定义迭代器的五种特性，使其适配iterator_traits进行特性提取，并兼容STL算法
+		typedef Value value_type;
+		typedef Ref reference;
+		typedef Ptr pointer;
+		// 迭代器类型为前向迭代器
+		typedef std::forward_iterator_tag iterator_category;
+		typedef ptrdiff_t difference_type;
+
+		typedef __skiplist_iterator<Value, Value&, Value*> iterator;
+		typedef __skiplist_iterator<Value, const Value&, const Value*> const_iterator;
+
+	private:
+		typedef __skiplist_iterator<Value, Ref, Ptr> self;
+		typedef __skiplist_node<Value>* link_type;
+		// 迭代器的唯一数据就是一个原生指针
+		link_type node;
 
 	public:
 		// 构造函数
-		Node(K k, V v, int level);
+		__skiplist_iterator(link_type x) : node(x) {}
+		__skiplist_iterator(const iterator &it) : node(it.node) {}
 
-		// 析构函数，释放forward指向的动态分配的内存
-		~Node() { delete [] forward; }
+		// 重载解引用运算符
+		reference operator*() const { return node->value_field; }
+		// 重载成员访问运算符的标准操作
+		pointer operator->() const { return &(operator*()); }
 
-		// 获取key/value
-		K get_key() const { return key; }
-		V get_value() const { return value; }
+		// 重载递增运算符，因为是单向迭代器类型，所以不支持递减运算符
+		self& operator++() { node = node->forward[0]; return *this; } // 前置递增
+		self& operator++(int) { self tmp = *this; node = node->forward[0]; return *this; } // 后置递增
 
-		// 设置value
-		void set_value(V v) { value = v; }
+		// 重载==和!=运算符，用于条件判断
+		bool operator==(const iterator &it) const { return node == it.node; }
+		bool operator!=(const iterator &it) const { return node != it.node; }
 };
 
-// 节点的有参构造函数(Key, Value, 所在层级--随机生成)
-template <typename K, typename V>
-Node<K,V>::Node(K k, V v, int level) : key(k), value(v), node_level(level) {
-	// forward的大小为level+1，因为层数从0开始
-	forward = new Node<K, V>*[level+1];
-	// 初始化分配的内存空间，将内存清零
-	bzero(forward, sizeof(Node<K, V>*)*(level+1));
-}
+// skiplist类
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+class skiplist {
+	public:
+		// 定义跳表的基础类型
+		typedef Key key_type;
+		typedef Value value_type;
+		typedef value_type* pointer;
+		typedef const value_type* const_pointer;
+		typedef value_type& reference;
+		typedef const value_type& const_reference;
+		typedef size_t size_type;
+		typedef ptrdiff_t difference_type;
 
-// 跳表类
-template <typename K, typename V>
-class SkipList {
-	private:
-		// 由于层数从0开始索引，所以实际层数要+1
-		int _max_level; // 跳表的最大层数（上限）
-		int _skip_list_level; // 跳表的当前最高层
-		Node<K, V> *_header; // 跳表的头节点
-		int _element_count; // 当前跳表中节点的数量
+		// 定义跳表的专属迭代器
+		typedef __skiplist_iterator<value_type, reference, pointer> iterator;
+		typedef __skiplist_iterator<value_type, const_reference, const_pointer> const_iterator;
 
 	private:
-		// 生成随机层数
-		int get_random_level();
-		// 创建一个新节点
-		Node<K, V>* create_node(K key, V value, int level) {
-			return new Node<K, V>(key, value, level);
-		}
+		typedef __skiplist_node<Value> skiplist_node;
+		typedef skiplist_node* link_type;
+
+		// 层级上限
+		size_type max_level;
+		// 当前最高层
+		size_type top_level;
+		// 跳表的大小，即节点数量
+		size_type node_count;
+		// 作为节点间键值大小比较准则的函数对象
+		Compare key_compare;
+		// 头节点
+		link_type header;
+
+
+	private:
+		// 生成随机数作为节点层级
+		size_type random_level();
+		// 创建一个节点
+		link_type create_node(const value_type &val, size_t level) { return new skiplist_node(val, level); }
+		// 销毁一个节点
+		void destroy_node(link_type node) { delete node; }
+		// 初始化头节点
+		void init() { header = create_node(value_type(), max_level); }
+
+		// 用于获得节点的value和key
+		static reference value(link_type x) { return x->value_field; } //有用
+		static const Key& key(link_type x) { return KeyOfValue()(value(x)); } //有用
+
+		iterator __insert(link_type *update, const value_type &val);
+		void __erase(link_type x);
+		
+
+
+
 
 	public:
-		// 构造和析构函数
-		SkipList(int max_level);
-		~SkipList();
+		// 构造函数
+		skiplist(size_type max_level, const Compare &comp = Compare())
+			: max_level(max_level), top_level(0), node_count(0), key_compare(comp) { init(); }
+		// 析构函数，需要先清空跳表，再释放头节点
+		~skiplist() { clear(); destroy_node(header); }
+		// 拷贝构造函数
+		skiplist(const skiplist &rhs);
+		skiplist& operator=(const skiplist &rhs);
+		
+		// 获取作为节点间键值大小比较准则的函数对象
+		Compare key_comp() const { return key_compare; }
 
-		// 跳表的增删改查
-		int insert_element(K key, V value);
-		bool search_element(K key);
-		void delete_element(K key);
+		// 首尾迭代器，首迭代器即头节点在第0层的后继
+		// 因为是单向链表，所以无反向迭代器
+		iterator begin() const { return header->forward[0]; }
+		const_iterator cbegin() const { return header->forward[0]; }
+		iterator end() const { return nullptr; }
+		const_iterator cend() const { return nullptr; }
+
+		// 定义数据规模的相关函数
+		bool empty() const { return node_count == 0; }
+		size_type size() const { return node_count; }
+		size_type max_size() const { return size_type(-1); }
+
+		// 将节点插入跳表中，并保证节点唯一
+		std::pair<iterator, bool> insert_unique(const value_type &val);
+		// iterator insert_equal(const value_type &val);
+
+		// 清空跳表
 		void clear();
 
-		// 打印跳表
-		void display();
-
-		// 数据载入和存盘
-		void load_data(const std::string &file_path);
-		void dump_data(const std::string &file_path, const std::string &delimiter = ":");
-
-		// 获取当前跳表中节点的数量
-		int size() const { return _element_count; }
-		// 判断跳表是否为空
-		bool empty() const { return _element_count == 0; }
+#ifndef NDEBUG
+		// 打印跳表（仅限于调试）
+		void display() const;
+#endif
 };
 
-// 生成随机数作为节点的最高层
-template <typename K, typename V>
-int SkipList<K, V>::get_random_level() {
-	int k = 1;
-	// 控制每次增长的概率为50%
-	while (rand() % 2) ++k;
-	return k < _max_level ? k : _max_level;
+// 生成随机数作为节点层级
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+typename skiplist<Key, Value, KeyOfValue, Compare>::size_type
+skiplist<Key, Value, KeyOfValue, Compare>::random_level() {
+	size_type level = 1;
+	// 每次层级向上增长的概率为50%
+	while (rand() % 2) { if (++level >= max_level) return max_level; }
+	return level;
 }
 
-// 跳表的构造函数
-template <typename K, typename V>
-SkipList<K, V>::SkipList(int max_level) : _max_level(max_level), _skip_list_level(0), _element_count(0) {
-	// 创建头节点，头节点的所在层级为_max_level
-	// 头节点的forward数组长度为_max_level+1，因为层数从0开始
-	_header = new Node<K, V>(K(), V(), _max_level);
+// 将节点插入跳表中，并保证节点唯一
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+std::pair<typename skiplist<Key, Value, KeyOfValue, Compare>::iterator, bool>
+skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) {
+#ifndef NDEBUG
+	std::cout << "call: insert_unique ";
+#endif
+	link_type current = header;
+	// 使用update来保存每层中最后一个满足其key小于待插入节点的key的节点（即前驱节点)
+	// update大小设置为max_level+1以确保有足够的空间来存放每层满足条件的节点
+	link_type update[max_level+1];
+	bzero(update, sizeof(link_type)*(max_level+1));
+
+	// 从跳表最高层开始查找
+	for (int i = top_level; i >= 0; --i) {
+		// 若当前节点的后继不为空且后继的key小于待插入的节点的key
+		// 表明需要在当前层继续前进，继续while循环
+		while (current->forward[i] && key_compare(key(current->forward[i]), KeyOfValue()(val)))
+			current = current->forward[i];
+		// 若当前节点的后继为空或后继节点的key大于等于目标节点的key
+		// 则current此时即为待插入节点的前一个位置（前驱节点），将其保存到update中
+		update[i] = current;
+	}
+
+	// 当for循环结束时，表明已经查到了第0层
+	// 那么current->forward[0]的key此时可能等于或大于待插入节点的key
+	current = current->forward[0];
+	
+	// 情况1: 待插入的key已经存在于跳表中，则不插入新值
+	if (current && !key_compare(KeyOfValue()(val), key(current))) {
+#ifndef NDEBUG
+		std::cout << std::endl << std::setw(6) << " "
+			<< "** can not repeatedly inserted key: " << KeyOfValue()(val) << std::endl;
+#endif
+		return std::pair<iterator, bool>(current, false);
+	}
+	return std::pair<iterator, bool>(__insert(update, val), true);
 }
 
-// 跳表的析构函数
-template <typename K, typename V>
-SkipList<K, V>::~SkipList() {
-	// 释放头节点
-	delete _header;
-}
 
 
 /*
- * +-------------+
- * |insert key=50|
- * +-------------+
- *
- * level 4:--->1+                  insert+--+               100
- * level 3:    1+------------>10+------->|50|         70    100
- * level 2:    1              10         |50|         70    100
- * level 1:    1    4         10    30   |50|         70    100
- * level 0:    1    4    9    10    30   |50|   60    70    100
- */
-
-// 在跳表中插入节点，若key不存在，则直接插入，并返回0
-// 若key已存在于跳表中，则修改key对应的value，并返回1
-template <typename K, typename V>
-int SkipList<K, V>::insert_element(K key, V value) {
-	mtx.lock(); // 对于修改跳表的操作需要加锁
+// 将节点插入跳表中，并允许节点重复
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+typename skiplist<Key, Value, KeyOfValue, Compare>::iterator
+skiplist<Key, Value, KeyOfValue, Compare>::insert_equal(const value_type &val) {
 #ifndef NDEBUG
-	std::cout << "=> insert element..." << std::endl;
+	std::cout << "call: insert_equal ";
 #endif
-	Node<K, V> *current = _header; // 从头节点开始
+	link_type current = header;
+	// 使用update来保存每层中最后一个满足其key小于待插入节点的key的节点（即前驱节点)
+	// update大小设置为max_level+1以确保有足够的空间来存放每层满足条件的节点
+	link_type update[max_level+1];
+	bzero(update, sizeof(link_type)*(max_level+1));
 
-	// 使用update来保存每层中最后一个满足其key小于待插入key的节点（即前驱节点）
-	// update的大小设置为_max_level+1从而确保有足够的空间来存放每层满足条件的节点
-	Node<K, V> *update[_max_level+1];
-	bzero(update, sizeof(Node<K, V>*)*(_max_level+1));
-
-	// 从跳表的最高层开始查找
-	for (int i = _skip_list_level; i >= 0; --i) {
-		// 若当前节点的后继不为空且后继的key小于目标key
-		// 表明需要在当前层继续前进，即继续while循环
-		while (current->forward[i] != nullptr && current->forward[i]->get_key() < key)
+	// 从跳表最高层开始查找
+	for (int i = top_level; i >= 0; --i) {
+		// 若当前节点的后继不为空且后继的key小于待插入的节点的key
+		// 表明需要在当前层继续前进，继续while循环
+		while (current->forward[i] && key_compare(key(current->forward[i]), KeyOfValue()(val)))
 			current = current->forward[i];
-		// 若当前节点的后继为空或后继的key大于等于目标的key
-		// 则此时的current即为待插入的目标key的前一个位置
-		// 那么将current的值保存至update[i]中
+		// 若当前节点的后继为空或后继节点的key大于等于目标节点的key
+		// 则current此时即为待插入节点的前一个位置（前驱节点），将其保存到update中
 		update[i] = current;
-		// 开启下一次for循环，向下降一层级继续查找
 	}
+	return __insert(update, val);
+}
+*/
 
-	// 当for循环结束时，表明已经查找到了第0层级
-	// 那么current->forward[0]则表示第0层中第一个满足其key大于或等于待插入的key的节点
-	current = current->forward[0];
-
-	// 情况1: 待插入的key已经存在于跳表中，则更新对应的value即可
-	if (current != nullptr && current->get_key() == key) {
+// 真正执行插入节点的操作，创建一个节点并设置相应的值以及前驱和后继
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+typename skiplist<Key, Value, KeyOfValue, Compare>::iterator
+skiplist<Key, Value, KeyOfValue, Compare>::__insert(link_type* update, const value_type &val) {
 #ifndef NDEBUG
-		std::cout << "** successfully updated: (" << key << ", " << current->get_value()
-			<< ") -> (" << key << ", " << value << ")" << std::endl;
+	std::cout << "=> __insert..." << std::endl;
 #endif
-		current->set_value(value);
-		mtx.unlock(); // 解锁
-		return 1;
+	// 为待插入的节点生成随机层数，层索引从0开始，所以实际层数为level+1
+	size_type level = random_level();
+
+	// 若待插入节点的level大于当前跳表中的最高层级top_level（不是max_level）
+	// 则表明在层级为[top_level+1, level]范围内，待插入节点的前驱必为header
+	if (level > top_level) {
+		for (size_type i = top_level+1; i <= level; ++i)
+			update[i] = header;
+		// 更新跳表的最高层级
+		top_level = level;
 	}
 
-	// 情况2: 待插入的key不存在于跳表中，则需创建新节点插入，并根据随机数设置层级
-	if (current == nullptr || current->get_key() != key) {
-		// 为待插入的节点生成随机层数
-		// 层索引从0开始，所以实际层数为level+1
-		int random_level = get_random_level();
+	// 创建待插入的新节点
+	link_type node = create_node(val, level);
 
-		// 若random_level大于当前的最高层_skip_list_level(不是_max_level)
-		// 则表明在层级为[_skip_list_level+1, random_level]内，待插入节点的前驱必为_header
-		if (random_level > _skip_list_level) {
-			for (int i = _skip_list_level+1; i <= random_level; ++i)
-				update[i] = _header;
-			_skip_list_level = random_level; // 更新当前最高层
-		}
+	// 设置新节点在跳表中的前驱和后继
+	for (size_type i = 0; i <= level; ++i) {
+		// 将新节点的后继设置为事先所保存的前驱节点的后继
+		node->forward[i] = update[i]->forward[i];
+		// 更新事先所保存的前驱节点的后继为当前节点
+		update[i]->forward[i] = node;
+	}
 
-		// 创建待插入的新节点
-		Node<K, V> *node = create_node(key, value, random_level);
-
-		// 插入新节点，从第0层开始修改前驱及后继
-		for (int i = 0; i <= random_level; ++i) {
-			// 将待插入节点的后继设置为事先所保存的前驱节点的后继
-			node->forward[i] = update[i]->forward[i];
-			// 更新事先所保存的前驱节点的后继为当前节点
-			update[i]->forward[i] = node;
-		}
-
-		++_element_count; // 更新跳表中的节点总数
+	// 更新跳表中的节点总数
+	++node_count;
 #ifndef NDEBUG
-		std::cout << "** successfully inserted: (" << key << ", " << value << ")" << std::endl;
+	std::cout << std::setw(6) << " " << "** successfully inserted: " << val << ":" << KeyOfValue()(val) << std::endl;
 #endif
-	}
-	mtx.unlock(); // 解锁
-	return 0;
+
+	// 返回新节点的位置
+	return node;
 }
 
-/*
- * +-------------+
- * |select key=60|
- * +-------------+
- *
- * level 4:--->1+                                           100
- * level 3:    1+------------>10+-------->50+         70    100
- * level 2:    1              10          50+         70    100
- * level 1:    1    4         10    30    50+         70    100
- * level 0:    1    4    9    10    30    50+-->60    70    100
- */
-
-// 在跳表中根据键来查找节点
-template <typename K, typename V>
-bool SkipList<K, V>::search_element(K key) {
+// 清空跳表，释放跳表中除header外的所有节点
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+void skiplist<Key, Value, KeyOfValue, Compare>::clear() {
 #ifndef NDEBUG
-	std::cout << "=> search element..." << std::endl;
-#endif
-	Node<K, V> *current = _header; // 从头节点开始
-
-	// 从跳表的最高层开始查找
-	for (int i = _skip_list_level; i >= 0; --i) {
-		// 若当前节点的后继不为空且后继的key小于目标key
-		// 表明需要在当前层继续前进，即继续while循环
-		while (current->forward[i] != nullptr && current->forward[i]->get_key() < key)
-			current = current->forward[i];
-		// 若当前节点的后继为空或后继的key大于等于目标的key
-		// 表明需要向下降一层级，即结束while循环，开启下一次for循环
-	}
-
-	// 当for循环结束时，表明已经查找到了第0层级
-	// 且此时的current节点必定是跳表中满足key小于目标key的所有节点中，key最大的那个节点
-	// 若key存在，则current的后继即为所要查找的目标节点
-	current = current->forward[0];
-
-	if (current != nullptr && current->get_key() == key) {
-#ifndef NDEBUG
-		std::cout << "** successfully found: (" << key << ", " << current->get_value() << ")" << std::endl;
-#endif
-		return true;
-	}
-#ifndef NDEBUG
-	std::cout << "** not found key: " << key << std::endl;
-#endif
-	return false;
-}
-
-// 在跳表中根据键来删除节点
-template <typename K, typename V>
-void SkipList<K, V>::delete_element(K key) {
-	mtx.lock(); // 对于修改跳表的操作需要加锁
-#ifndef NDEBUG
-	std::cout << "=> delete element..." << std::endl;
-#endif
-	Node<K, V> *current = _header; // 从头节点开始
-
-	// 使用update来保存每层中最后一个满足其key小于待删除key的节点（即前驱节点）
-	// update的大小设置为_max_level+1从而确保有足够的空间来存放每层满足条件的节点
-	Node<K, V> *update[_max_level+1];
-	bzero(update, sizeof(Node<K, V>*)*(_max_level+1));
-
-	// 从跳表的最高层开始查找
-	for (int i = _skip_list_level; i >= 0; --i) {
-		// 若当前节点的后继不为空且后继的key小于目标key
-		// 表明需要在当前层继续前进，即继续while循环
-		while (current->forward[i] != nullptr && current->forward[i]->get_key() < key)
-			current = current->forward[i];
-		// 若当前节点的后继为空或后继的key大于等于目标的key
-		// 则此时的current即为待删除的目标key的前一个位置
-		// 那么将current的值保存至update[i]中
-		update[i] = current;
-		// 开启下一次for循环，向下降一层级继续查找
-	}
-
-	// 当for循环结束时，表明已经查找到了第0层级
-	// 那么current->forward[0]则表示第0层中第一个满足其key大于或等于待删除的key的节点
-	current = current->forward[0];
-
-	// 待删除的key存在于跳表中，则删除对应的节点
-	if (current != nullptr && current->get_key() == key) {
-		// 从第0层开始修改前驱及后继
-		for (int i = 0; i <= _skip_list_level; ++i) {
-			// 若前驱的后继不再是待删除的节点，则退出循环
-			if (update[i]->forward[i] != current) break;
-			// 将前驱的后继修改为待删除节点的后继
-			update[i]->forward[i] = current->forward[i];
-		}
-#ifndef NDEBUG
-		V value = current->get_value();
-#endif
-		delete current; // 释放节点所占用的内存空间
-
-		// 由于删除的节点的层级可能为当前跳表的唯一最大层
-		// 因此删除节点后，需要更新当前跳表的最大层级
-		// 若头节点在最高层的后继为空，则表明最高层为空，需要降低最高层
-		while (_skip_list_level > 0 && _header->forward[_skip_list_level] == nullptr)
-			--_skip_list_level;
-
-		--_element_count; // 更新跳表中的节点总数
-
-#ifndef NDEBUG
-		std::cout << "** successfully deleted: (" << key << ", " << value <<")" << std::endl;
-#endif
-	} else {
-#ifndef NDEBUG
-		std::cout << "** not found key: " << key << std::endl;
-#endif
-	}
-	mtx.unlock(); // 解锁
-}
-
-// 清空跳表，释放所有节点
-template <typename K, typename V>
-void SkipList<K, V>::clear() {
-	mtx.lock(); // 对于修改跳表的操作需要加锁
-#ifndef NDEBUG
-	std::cout << "=> clear skip list..." << std::endl;
+	std::cout << "call: clear..." << std::endl;
 #endif
 	// 从第0层的头节点的后继开始
-	Node <K, V> *node = _header->forward[0];
-	while (node != nullptr) {
-		Node <K, V> *tmp = node;
+	link_type node = header->forward[0];
 #ifndef NDEBUG
-		std::cout << "** successfully deleted: (" << tmp->get_key() << ", " << tmp->get_value() << ")" << std::endl;
+	std::cout << std::setw(6) << " " << "** successfully deleted: ";
 #endif
+	while (node) {
+		link_type tmp = node;
 		node = node->forward[0];
-		delete tmp;
+#ifndef NDEBUG
+		std::cout << value(tmp) << ":" << key(tmp);
+		if (node) std::cout << " => ";
+#endif
+		// 销毁节点
+		destroy_node(tmp);
 	}
+	std::cout << std::endl;
 
-	// 重新初始化_header
-	bzero(_header->forward, sizeof(Node<K, V>*)*(_skip_list_level+1));
-	_skip_list_level = 0;
-	_element_count = 0;
-
-	mtx.unlock(); // 解锁
+	// 重新初始化header的forward数组
+	bzero(header->forward, sizeof(link_type)*(top_level+1));
+	// 重置最高层级和节点数量
+	top_level = 0;
+	node_count = 0;
 }
 
-// 打印跳表中的数据
-template <typename K, typename V>
-void SkipList<K, V>::display() {
-	std::cout << "=> display skip list..." << std::endl;
+#ifndef NDEBUG
+// 打印跳表中的所有节点（仅限于调试）
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+void skiplist<Key, Value, KeyOfValue, Compare>::display() const {
+	std::cout << "call: display..." << std::endl;
+	std::cout << std::setw(6) << " " << "** skiplist node count: " << std::to_string(size()) << std::endl;
+	if (empty()) return;
 	// 从最高层开始打印
-	for (int i = _skip_list_level; i >= 0; --i) {
-		Node<K, V> *node = _header->forward[i];
-		std::cout << "** level " << i << ": ";
-		Node<K, V> *tmp = _header->forward[0];
-		// 为了方便理解，所以手动指定了输出补白
+	for (int i = top_level; i >= 0; --i) {
+		// node为正在打印的层
+		link_type node = header->forward[i];
+		std::cout << std::setw(6) << " " << "** level " << i << ": ";
+		// tmp为第0层，存放实际要打印的值
+		link_type tmp = header->forward[0];
+		// 为了方便显示，所以手动指定了输出补白
 		// 因此跳表中的key和value最好是单个字符
-		while (node != nullptr) {
-			while (tmp != nullptr && node != tmp) {
+		while (node) {
+			while (tmp && node != tmp) {
+				// 若tmp的value不存在于当前层，则输出空白
 				std::cout << std::setw(7) << " ";
 				tmp = tmp->forward[0];
 			}
-			std::cout << std::setw(4) << " " << node->get_key() << ":" << node->get_value();
+			std::cout << std::setw(4) << " " << value(node) << ":" << key(node);
 			tmp = tmp->forward[0];
 			node = node->forward[i];
 		}
 		std::cout << std::endl;
 	}
 }
-
-// 从文件中加载数据
-template <typename K, typename V>
-void SkipList<K, V>::load_data(const std::string &file_path) {
-#ifndef NDEBUG
-	std::cout << "=> load data from: '" << file_path << "'..." << std::endl;
 #endif
-	std::ifstream fin(file_path);
-	std::string line, key, value;
-	while (std::getline(fin, line)) {
-		string_to_kv(line, key, value);
-		if (key.empty() || value.empty()) continue;
-		insert_element(key, value);
-	}
-	fin.close();
-}
-
-// 将数据写入至文件，默认的分隔符为":"
-template<typename K, typename V>
-void SkipList<K, V>::dump_data(const std::string &file_path, const std::string &delimiter) {
-#ifndef NDEBUG
-	std::cout << "=> dump data to: '" << file_path << "'..." << std::endl;
-#endif
-	std::ofstream fout(file_path);
-	// 将第0层的数据写入文件即可
-	Node<K, V> *node = _header->forward[0];
-	while (node != nullptr) {
-		fout << node->get_key() << delimiter << node->get_value() << "\n";
-		node = node->forward[0];
-	}
-	fout.close();
-}
 
 #endif
