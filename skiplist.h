@@ -107,7 +107,6 @@ class skiplist {
 		// 头节点
 		link_type header;
 
-
 	private:
 		// 生成随机数作为节点层级
 		size_type random_level();
@@ -119,25 +118,19 @@ class skiplist {
 		void init() { header = create_node(value_type(), max_level); }
 
 		// 用于获得节点的value和key
-		static reference value(link_type x) { return x->value_field; } //有用
-		static const Key& key(link_type x) { return KeyOfValue()(value(x)); } //有用
+		static reference value(link_type x) { return x->value_field; }
+		static const Key& key(link_type x) { return KeyOfValue()(value(x)); }
 
+		// 用于插入和删除节点的核心函数
 		iterator __insert(link_type *update, const value_type &val);
-		void __erase(link_type x);
+		void __erase(const key_type &k);
 		
-
-
-
-
 	public:
 		// 构造函数
 		skiplist(size_type max_level, const Compare &comp = Compare())
 			: max_level(max_level), top_level(0), node_count(0), key_compare(comp) { init(); }
 		// 析构函数，需要先清空跳表，再释放头节点
 		~skiplist() { clear(); destroy_node(header); }
-		// 拷贝构造函数
-		skiplist(const skiplist &rhs);
-		skiplist& operator=(const skiplist &rhs);
 		
 		// 获取作为节点间键值大小比较准则的函数对象
 		Compare key_comp() const { return key_compare; }
@@ -159,6 +152,13 @@ class skiplist {
 		// iterator insert_equal(const value_type &val);
 		// 根据key在跳表中查找节点
 		iterator find(const key_type &k);
+		// 根据key在跳表中删除节点
+		void erase(const key_type &k) {
+#ifndef NDEBUG
+			std::cout << "call: skiplist.erase ";
+#endif
+			__erase(k);
+		}
 
 		// 清空跳表
 		void clear();
@@ -219,8 +219,6 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) 
 	}
 	return std::pair<iterator, bool>(__insert(update, val), true);
 }
-
-
 
 /*
 // 将节点插入跳表中，并允许节点重复
@@ -312,6 +310,7 @@ skiplist<Key, Value, KeyOfValue, Compare>::find(const key_type &k) {
 	// 若key存在，则current的后继即为所要查找的目标节点
 	current = current->forward[0];
 
+	// 若目标节点在跳表中，则直接返回其位置即可
 	if (current && !key_compare(k, key(current))) {
 #ifndef NDEBUG
 		std::cout << std::setw(6) << " " << "** successfully found: " << k << ":" << value(current) << std::endl;
@@ -322,6 +321,69 @@ skiplist<Key, Value, KeyOfValue, Compare>::find(const key_type &k) {
 	std::cout << std::setw(6) << " " << "** not found key: " << k << std::endl;
 #endif
 	return end();
+}
+
+
+// 在跳表中根据key删除节点
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+void skiplist<Key, Value, KeyOfValue, Compare>::__erase(const key_type &k) {
+#ifndef NDEBUG
+	std::cout << "=> __erase..." << std::endl;
+#endif
+	link_type current = header;
+
+	// 使用update来保存每层中最后一个满足其key小于待删除节点的key的节点（即前驱节点）
+	// update大小设置为max_level+1以确保有足够的空间来存放每层满足条件的节点
+	link_type update[max_level+1];
+	bzero(update, sizeof(link_type)*(max_level+1));
+
+	// 从跳表最高层开始查找
+	for (int i = top_level; i >= 0; --i) {
+		// 若当前节点的后继不为空且后继的key小于目标key
+		// 表明需要在当前层继续前进，即继续while循环
+		while (current->forward[i] && key_compare(key(current->forward[i]), k))
+			current = current->forward[i];
+		// 若当前节点的后继为空或后继节点的key大于等于目标节点的key
+		// 则current此时即为待删除节点的前一个位置（前驱节点），将其保存到update中
+		update[i] = current;
+	}
+
+	// 当for循环结束时，表明已经查到了第0层
+	// 那么current->forward[0]的key此时可能等于或大于待删除节点的key
+	current = current->forward[0];
+
+	// 若待删除的key对应的节点在跳表中，则修改前驱和后继
+	if (current && !key_compare(k, key(current))) {
+		// 从第0层开始修改
+		for (size_type i = 0; i <= top_level; ++i) {
+			// 若前驱的后继不再是待删除的节点，则退出循环
+			if (update[i]->forward[i] != current) break;
+			// 将前驱的后继修改为待删除节点的后继
+			update[i]->forward[i] = current->forward[i];
+		}
+#ifndef NDEBUG
+		value_type val = value(current);
+#endif
+
+		// 释放节点所占用的内存空间
+		destroy_node(current);
+
+		// 由于删除的节点的层级可能为当前跳表的唯一最大层
+		// 因此删除节点后，需要更新当前跳表的最大层级
+		// 若头节点在最高层的后继为空，则表明最高层为空，需要降低最高层
+		while (top_level > 0 && !header->forward[top_level]) --top_level;
+		
+		// 更新跳表中的节点总数
+		--node_count;
+
+#ifndef NDEBUG
+		std::cout << std::setw(6) << " " << "** successfully deleted: " << k << ":" << val << std::endl;
+#endif
+	} else {
+#ifndef NDEBUG
+		std::cout << std::setw(6) << " " << "** not found key: " << k << std::endl;
+#endif
+	}
 }
 
 // 清空跳表，释放跳表中除header外的所有节点
