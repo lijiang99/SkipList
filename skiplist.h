@@ -157,6 +157,8 @@ class skiplist {
 		// 将节点插入跳表中，并保证节点唯一
 		std::pair<iterator, bool> insert_unique(const value_type &val);
 		// iterator insert_equal(const value_type &val);
+		// 根据key在跳表中查找节点
+		iterator find(const key_type &k);
 
 		// 清空跳表
 		void clear();
@@ -178,11 +180,13 @@ skiplist<Key, Value, KeyOfValue, Compare>::random_level() {
 }
 
 // 将节点插入跳表中，并保证节点唯一
+// 若待插入节点的key不存在，则插入成功，并返回新节点的迭代器和true
+// 若待插入节点的key已存在，则插入失败，并返回key相同的节点的迭代器和false
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 std::pair<typename skiplist<Key, Value, KeyOfValue, Compare>::iterator, bool>
 skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) {
 #ifndef NDEBUG
-	std::cout << "call: insert_unique ";
+	std::cout << "call: skiplist.insert_unique ";
 #endif
 	link_type current = header;
 	// 使用update来保存每层中最后一个满足其key小于待插入节点的key的节点（即前驱节点)
@@ -205,7 +209,7 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) 
 	// 那么current->forward[0]的key此时可能等于或大于待插入节点的key
 	current = current->forward[0];
 	
-	// 情况1: 待插入的key已经存在于跳表中，则不插入新值
+	// 若待插入的key已经存在于跳表中，则不插入新值
 	if (current && !key_compare(KeyOfValue()(val), key(current))) {
 #ifndef NDEBUG
 		std::cout << std::endl << std::setw(6) << " "
@@ -246,12 +250,12 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_equal(const value_type &val) {
 }
 */
 
-// 真正执行插入节点的操作，创建一个节点并设置相应的值以及前驱和后继
+// 创建一个节点并设置相应的值以及前驱和后继，返回指向新节点的迭代器
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 typename skiplist<Key, Value, KeyOfValue, Compare>::iterator
 skiplist<Key, Value, KeyOfValue, Compare>::__insert(link_type* update, const value_type &val) {
 #ifndef NDEBUG
-	std::cout << "=> __insert..." << std::endl;
+	std::cout << "=> skiplist.__insert..." << std::endl;
 #endif
 	// 为待插入的节点生成随机层数，层索引从0开始，所以实际层数为level+1
 	size_type level = random_level();
@@ -286,16 +290,52 @@ skiplist<Key, Value, KeyOfValue, Compare>::__insert(link_type* update, const val
 	return node;
 }
 
+// 在跳表中根据key查找节点，key存在则返回指向该节点的迭代器，否则返回尾迭代器
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+typename skiplist<Key, Value, KeyOfValue, Compare>::iterator
+skiplist<Key, Value, KeyOfValue, Compare>::find(const key_type &k) {
+#ifndef NDEBUG
+	std::cout << "call: skiplist.find..." << std::endl;
+#endif
+	link_type current = header;
+	// 从跳表最高层开始查找
+	for (int i = top_level; i >= 0; --i) {
+		// 若当前节点的后继不为空且后继的key小于目标key
+		// 表明需要在当前层继续前进，继续while循环
+		while (current->forward[i] && key_compare(key(current->forward[i]), k))
+			current = current->forward[i];
+		// 若当前节点的后继为空或后继节点的key大于等于目标的key
+		// 表明需要向下降一层级，即结束while循环，开启下一次for循环
+	}
+	// 当for循环结束时，表明已经查找到了第0层级
+	// 且此时的current节点必定是跳表中满足key小于目标key的所有节点中，key最大的那个节点
+	// 若key存在，则current的后继即为所要查找的目标节点
+	current = current->forward[0];
+
+	if (current && !key_compare(k, key(current))) {
+#ifndef NDEBUG
+		std::cout << std::setw(6) << " " << "** successfully found: " << k << ":" << value(current) << std::endl;
+#endif
+		return current;
+	}
+#ifndef NDEBUG
+	std::cout << std::setw(6) << " " << "** not found key: " << k << std::endl;
+#endif
+	return end();
+}
+
 // 清空跳表，释放跳表中除header外的所有节点
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 void skiplist<Key, Value, KeyOfValue, Compare>::clear() {
 #ifndef NDEBUG
-	std::cout << "call: clear..." << std::endl;
+	std::cout << "call: skiplist.clear..." << std::endl;
 #endif
 	// 从第0层的头节点的后继开始
 	link_type node = header->forward[0];
 #ifndef NDEBUG
-	std::cout << std::setw(6) << " " << "** successfully deleted: ";
+	std::cout << std::setw(6) << " " << "** skiplist node count: " << std::to_string(size()) << std::endl;
+	if (node) std::cout << std::setw(6) << " " << "** successfully deleted: ";
+	else return;
 #endif
 	while (node) {
 		link_type tmp = node;
@@ -320,7 +360,7 @@ void skiplist<Key, Value, KeyOfValue, Compare>::clear() {
 // 打印跳表中的所有节点（仅限于调试）
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 void skiplist<Key, Value, KeyOfValue, Compare>::display() const {
-	std::cout << "call: display..." << std::endl;
+	std::cout << "call: skiplist.display..." << std::endl;
 	std::cout << std::setw(6) << " " << "** skiplist node count: " << std::to_string(size()) << std::endl;
 	if (empty()) return;
 	// 从最高层开始打印
