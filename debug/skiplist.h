@@ -512,7 +512,9 @@ void skiplist<Key, Value, KeyOfValue, Compare>::clear() {
 		// 销毁节点
 		destroy_node(tmp);
 	}
+#ifndef NDEBUG
 	std::cout << std::endl;
+#endif
 
 	// 重新初始化header的forward数组
 	bzero(header->forward, sizeof(link_type)*(top_level+1));
