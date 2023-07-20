@@ -63,7 +63,7 @@ struct __skiplist_iterator {
 		link_type node;
 
 		// 构造函数
-		__skiplist_iterator(link_type x) : node(x) {}
+		__skiplist_iterator(link_type x = nullptr) : node(x) {}
 		__skiplist_iterator(const iterator &it) : node(it.node) {}
 
 		// 重载解引用运算符
