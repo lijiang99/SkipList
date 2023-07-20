@@ -74,6 +74,18 @@ class __skiplist_iterator {
 		bool operator!=(const iterator &it) const { return node != it.node; }
 };
 
+// 前置声明，在skiplist中声明友元需要
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+class skiplist;
+
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+bool operator==(const skiplist<Key, Value, KeyOfValue, Compare> &lhs,
+		const skiplist<Key, Value, KeyOfValue, Compare> &rhs);
+
+// template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+// bool operator<(const skiplist<Key, Value, KeyOfValue, Compare> &lhs,
+// 		const skiplist<Key, Value, KeyOfValue, Compare> &rhs);
+
 // skiplist类
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 class skiplist {
@@ -187,7 +199,29 @@ class skiplist {
 		// 打印跳表（仅限于调试）
 		void display() const;
 #endif
+
+		// 重载关系运算符的友元声明
+		friend bool operator==<Key, Value, KeyOfValue, Compare>(const skiplist<Key, Value, KeyOfValue, Compare> &lhs,
+				const skiplist<Key, Value, KeyOfValue, Compare> &rhs);
+		// friend bool operator< <Key, Value, KeyOfValue, Compare>(const skiplist<Key, Value, KeyOfValue, Compare> &lhs,
+		//		const skiplist<Key, Value, KeyOfValue, Compare> &rhs);
 };
+
+// 定义重载的相等性判断运算符
+// 只判断节点值（value_field）是否相等即可，不需要判断节点结构（level和forward）
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+bool operator==(const skiplist<Key, Value, KeyOfValue, Compare> &lhs,
+		const skiplist<Key, Value, KeyOfValue, Compare> &rhs) {
+	typename skiplist<Key, Value, KeyOfValue, Compare>::link_type lhs_current = lhs.header->forward[0];
+	typename skiplist<Key, Value, KeyOfValue, Compare>::link_type rhs_current = rhs.header->forward[0];
+	while (lhs_current && rhs_current) {
+		if (!(lhs.value(lhs_current) == rhs.value(rhs_current))) return false;
+		lhs_current = lhs_current->forward[0];
+		rhs_current = rhs_current->forward[0];
+	}
+	if (lhs_current || rhs_current) return false;
+	return true;
+}
 
 // 交换操作，交换所有节点值（value_field），也交换节点结构（level和forward）
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
@@ -469,7 +503,6 @@ void skiplist<Key, Value, KeyOfValue, Compare>::clear() {
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 void skiplist<Key, Value, KeyOfValue, Compare>::display() const {
 	std::cout << "call: skiplist.display..." << std::endl;
-	if (empty()) return;
 	// 从最高层开始打印
 	for (int i = top_level; i >= 0; --i) {
 		// node为正在打印的层
