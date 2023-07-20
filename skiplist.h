@@ -129,6 +129,21 @@ class skiplist {
 		// 构造函数
 		skiplist(size_type max_level, const Compare &comp = Compare())
 			: max_level(max_level), top_level(0), node_count(0), key_compare(comp) { init(); }
+
+		// 拷贝构造，需复制对象的底层资源
+		// 先利用委托构造函数初始化一个空跳表
+		// 再复制所有节点值（value_field），不复制节点结构（level和forward）
+		skiplist(const skiplist<Key, Value, KeyOfValue, Compare> &rhs)
+			: skiplist(rhs.max_level, rhs.key_compare) { insert_unique(rhs.begin(), rhs.end()); }
+		// 拷贝赋值，利用按值传递来自动处理自赋值的情况，并确保异常安全
+		// 但按值传递会调用拷贝构造，所以自赋值时会改变节点结构（level和forward）
+		skiplist<Key, Value, KeyOfValue, Compare>& operator=(skiplist<Key, Value, KeyOfValue, Compare> rhs) {
+			swap(rhs);
+			return *this;
+		};
+		// 交换操作
+		void swap(skiplist<Key, Value, KeyOfValue, Compare> &rhs);
+
 		// 析构函数，需要先清空跳表，再释放头节点
 		~skiplist() { clear(); destroy_node(header); }
 		
@@ -173,6 +188,22 @@ class skiplist {
 		void display() const;
 #endif
 };
+
+// 交换操作，交换所有节点值（value_field），也交换节点结构（level和forward）
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+void skiplist<Key, Value, KeyOfValue, Compare>::swap(skiplist<Key, Value, KeyOfValue, Compare> &rhs) {
+#ifndef NDEBUG
+	std::cout << "call: skiplist.swap..." << std::endl;
+#endif
+	std::swap(max_level, rhs.max_level);
+	std::swap(top_level, rhs.top_level);
+	std::swap(node_count, rhs.node_count);
+	// 交换header即可实现底层资源的置换
+	std::swap(header, rhs.header);
+#ifndef NDEBUG
+	std::cout << std::setw(6) << " " << "** successfully swapped right hand side" << std::endl;
+#endif
+}
 
 // 生成随机数作为节点层级
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
@@ -438,7 +469,6 @@ void skiplist<Key, Value, KeyOfValue, Compare>::clear() {
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 void skiplist<Key, Value, KeyOfValue, Compare>::display() const {
 	std::cout << "call: skiplist.display..." << std::endl;
-	std::cout << std::setw(6) << " " << "** skiplist node count: " << std::to_string(size()) << std::endl;
 	if (empty()) return;
 	// 从最高层开始打印
 	for (int i = top_level; i >= 0; --i) {
@@ -461,6 +491,7 @@ void skiplist<Key, Value, KeyOfValue, Compare>::display() const {
 		}
 		std::cout << std::endl;
 	}
+	std::cout << std::setw(6) << " " << "** summary: max_level=>" << max_level << ", top_level=>" << top_level << ", node_count=>" << node_count << std::endl;
 }
 #endif
 
