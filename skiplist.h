@@ -36,8 +36,7 @@ struct __skiplist_node {
 
 // skiplist的迭代器
 template <typename Value, typename Ref, typename Ptr>
-class __skiplist_iterator {
-	public:
+struct __skiplist_iterator {
 		// 定义迭代器的五种特性，使其适配iterator_traits进行特性提取，并兼容STL算法
 		typedef Value value_type;
 		typedef Ref reference;
@@ -48,14 +47,12 @@ class __skiplist_iterator {
 
 		typedef __skiplist_iterator<Value, Value&, Value*> iterator;
 		typedef __skiplist_iterator<Value, const Value&, const Value*> const_iterator;
-
-	private:
 		typedef __skiplist_iterator<Value, Ref, Ptr> self;
 		typedef __skiplist_node<Value>* link_type;
+
 		// 迭代器的唯一数据就是一个原生指针
 		link_type node;
 
-	public:
 		// 构造函数
 		__skiplist_iterator(link_type x) : node(x) {}
 		__skiplist_iterator(const iterator &it) : node(it.node) {}
@@ -72,6 +69,8 @@ class __skiplist_iterator {
 		// 重载==和!=运算符，用于条件判断
 		bool operator==(const iterator &it) const { return node == it.node; }
 		bool operator!=(const iterator &it) const { return node != it.node; }
+		bool operator==(const const_iterator &it) const { return node == it.node; }
+		bool operator!=(const const_iterator &it) const { return node != it.node; }
 };
 
 // 前置声明，在skiplist中声明友元需要
@@ -182,7 +181,7 @@ class skiplist {
 		// iterator insert_equal(const value_type &val);
 
 		// 根据key在跳表中查找节点
-		iterator find(const key_type &k);
+		iterator find(const key_type &k) const;
 
 		// 根据key在跳表中删除节点
 		void erase(const key_type &k) {
@@ -371,7 +370,7 @@ skiplist<Key, Value, KeyOfValue, Compare>::__insert(link_type* update, const val
 // 在跳表中根据key查找节点，key存在则返回指向该节点的迭代器，否则返回尾迭代器
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 typename skiplist<Key, Value, KeyOfValue, Compare>::iterator
-skiplist<Key, Value, KeyOfValue, Compare>::find(const key_type &k) {
+skiplist<Key, Value, KeyOfValue, Compare>::find(const key_type &k) const {
 #ifndef NDEBUG
 	std::cout << "call: skiplist.find..." << std::endl;
 #endif
@@ -524,7 +523,8 @@ void skiplist<Key, Value, KeyOfValue, Compare>::display() const {
 		}
 		std::cout << std::endl;
 	}
-	std::cout << std::setw(6) << " " << "** summary: max_level=>" << max_level << ", top_level=>" << top_level << ", node_count=>" << node_count << std::endl;
+	std::cout << std::setw(6) << " " << "** summary: max_level=>" << max_level
+		<< ", top_level=>" << top_level << ", node_count=>" << node_count << std::endl;
 }
 #endif
 
