@@ -25,7 +25,8 @@ class skip_set {
 		typedef Compare value_compare;
 
 	private:
-		// 作为证同测试的仿函数，用于跳表中从value获得key
+		// 证同函数，任何数值通过此函数后，不会有任何改变
+		// 作为跳表的KeyOfValue使用，因为set的value就是key
 		template <typename T>
 		struct identity : public std::unary_function<T, T> {
 			const T& operator()(const T& x) const { return x; }
@@ -43,7 +44,6 @@ class skip_set {
 		typedef typename rep_type::const_reference const_reference;
 		typedef typename rep_type::const_iterator iterator;
 		typedef typename rep_type::const_iterator const_iterator;
-
 		typedef typename rep_type::size_type size_type;
 		typedef typename rep_type::difference_type difference_type;
 
@@ -86,16 +86,15 @@ class skip_set {
 		size_type max_size() const { return rep.max_size(); }
 
 		// 插入操作
-		std::pair<iterator, bool> insert(const value_type &val) {
-			std::pair<typename rep_type::iterator, bool> p = rep.insert_unique(val);
-			return std::pair<iterator, bool>(p.first, p.second);
-		}
+		std::pair<iterator, bool> insert(const value_type &val) { return rep.insert_unique(val); }
 
 		template <typename InputIterator>
 		void insert(InputIterator first, InputIterator last) { rep.insert_unique(first, last); }
 
 		// 删除操作
 		void erase(const key_type &k) { rep.erase(k); }
+
+		void erase(iterator first, iterator last) { rep.erase(first, last); }
 
 		// 清空操作
 		void clear() { rep.clear(); }

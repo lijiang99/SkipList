@@ -190,6 +190,8 @@ class skiplist {
 #endif
 			__erase(k);
 		}
+		// 将一对迭代器[first, last)表示的范围内的节点从跳表中删除
+		void erase(const_iterator first, const_iterator last);
 
 		// 清空跳表
 		void clear();
@@ -402,6 +404,15 @@ skiplist<Key, Value, KeyOfValue, Compare>::find(const key_type &k) const {
 	return end();
 }
 
+// 将一对迭代器[first, last)表示的范围内的节点从跳表中删除
+template <typename Key, typename Value, typename KeyOfValue, typename Compare>
+void skiplist<Key, Value, KeyOfValue, Compare>::erase(const_iterator first, const_iterator last) {
+	while (first != last) {
+		key_type tmp = KeyOfValue()(*first);
+		++first;
+		__erase(tmp);
+	}
+}
 
 // 在跳表中根据key删除节点
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
