@@ -10,6 +10,15 @@
 #include <memory>
 #include <cstring>
 
+#ifndef NDEBUG
+// 重载左移运算符，用于输出类型为pair的元素值（仅限于调试）
+template <typename Key, typename T>
+std::ostream& operator<<(std::ostream &os, const std::pair<Key, T> &val) {
+	os << val.first << ":" << val.second;
+	return os;
+}
+#endif
+
 // skiplist的节点
 template <typename Value>
 struct __skiplist_node {
@@ -284,7 +293,7 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) 
 	if (current && !key_compare(KeyOfValue()(val), key(current))) {
 #ifndef NDEBUG
 		std::cout << std::endl << std::setw(6) << " "
-			<< "** can not repeatedly inserted key: " << KeyOfValue()(val) << std::endl;
+			<< "** can not repeatedly inserted key: " << val << std::endl;
 #endif
 		return std::pair<iterator, bool>(current, false);
 	}
@@ -362,7 +371,8 @@ skiplist<Key, Value, KeyOfValue, Compare>::__insert(link_type* update, const val
 	// 更新跳表中的节点总数
 	++node_count;
 #ifndef NDEBUG
-	std::cout << std::setw(6) << " " << "** successfully inserted: " << val << ":" << KeyOfValue()(val) << std::endl;
+	// std::cout << std::setw(6) << " " << "** successfully inserted: " << val << ":" << KeyOfValue()(val) << std::endl;
+	std::cout << std::setw(6) << " " << "** successfully inserted: " << val << std::endl;
 #endif
 
 	// 返回新节点的位置
@@ -394,7 +404,8 @@ skiplist<Key, Value, KeyOfValue, Compare>::find(const key_type &k) const {
 	// 若目标节点在跳表中，则直接返回其位置即可
 	if (current && !key_compare(k, key(current))) {
 #ifndef NDEBUG
-		std::cout << std::setw(6) << " " << "** successfully found: " << k << ":" << value(current) << std::endl;
+		// std::cout << std::setw(6) << " " << "** successfully found: " << k << ":" << value(current) << std::endl;
+		std::cout << std::setw(6) << " " << "** successfully found: " << value(current) << std::endl;
 #endif
 		return current;
 	}
@@ -467,7 +478,8 @@ void skiplist<Key, Value, KeyOfValue, Compare>::__erase(const key_type &k) {
 		--node_count;
 
 #ifndef NDEBUG
-		std::cout << std::setw(6) << " " << "** successfully deleted: " << k << ":" << val << std::endl;
+		// std::cout << std::setw(6) << " " << "** successfully deleted: " << k << ":" << val << std::endl;
+		std::cout << std::setw(6) << " " << "** successfully deleted: " << val << std::endl;
 #endif
 	} else {
 #ifndef NDEBUG
@@ -493,7 +505,8 @@ void skiplist<Key, Value, KeyOfValue, Compare>::clear() {
 		link_type tmp = node;
 		node = node->forward[0];
 #ifndef NDEBUG
-		std::cout << value(tmp) << ":" << key(tmp);
+		// std::cout << value(tmp) << ":" << key(tmp);
+		std::cout << value(tmp);
 		if (node) std::cout << " => ";
 #endif
 		// 销毁节点
@@ -529,6 +542,7 @@ void skiplist<Key, Value, KeyOfValue, Compare>::display() const {
 				tmp = tmp->forward[0];
 			}
 			std::cout << std::setw(4) << " " << value(node) << ":" << key(node);
+			// std::cout << std::setw(4) << " " << value(node);
 			tmp = tmp->forward[0];
 			node = node->forward[i];
 		}
