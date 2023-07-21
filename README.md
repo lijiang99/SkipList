@@ -23,17 +23,17 @@ copy(iset.begin(), iset.end(), oiter);
 + 接口测试：
     + test\_set.cpp：测试set接口，用例源于《STL源码剖析》第236页
     ```shell
-    g++ test_set.cpp -std=c++11 & ./a.out
+    g++ test_set.cpp -std=c++17 & ./a.out
     ```
     + test\_map.cpp：测试map接口，用例源于《STL源码剖析》第242页
     ```shell
-    g++ test_map.cpp -std=c++11 & ./a.out
+    g++ test_map.cpp -std=c++17 & ./a.out
     ```
 
 + 压力测试：
     + stress.cpp：测试插入和查找的效率
     ```shell
-    g++ stress.cpp -o stress -std=c++11 -D NDEBUG
+    g++ stress.cpp -o stress -std=c++17 -D NDEBUG
     
     # 以数据量为10W，线程数为1进行测试
     ./stress 100000 1
