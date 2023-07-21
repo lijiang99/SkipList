@@ -14,6 +14,16 @@ std::ostream_iterator<int> oiter(std::cout, " ");
 copy(iset.begin(), iset.end(), oiter);
 ```
 
++ 文件说明：
+    + debug: 该目录下有skiplist.h、skip\_set.h、skip\_map.h，主要用于调试。
+        + skiplist.h: 定义跳表数据结构，内含调试输出信息。
+        + skip\_set.h: 定义skip\_set的接口，其中大部分是转调用。
+        + skip\_map.h: 定义skip\_map的接口，其中大部分是转调用。
+    + include: 该目录下为清除调试信息后的skiplist.h、skip\_set、skip\_map，可用于压力测试。
+    + test\_set.cpp: 用于测试skip\_set的接口。
+    + test\_map.cpp: 用于测试skip\_map的接口。
+    + stress.cpp: 用于进行压力测试，主要测试插入和查询效率。
+
 + 参考资料：
     + [《STL源码剖析》](https://github.com/tolerious/Programming_learning_resource/blob/master/C%2B%2B/STL%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%EF%BC%88%E6%89%B9%E6%B3%A8%E7%89%88%EF%BC%89.pdf)
     + [基于跳表实现的轻量级键值数据库](https://github.com/youngyangyang04/Skiplist-CPP)
@@ -21,17 +31,17 @@ copy(iset.begin(), iset.end(), oiter);
 ## 2. 测试方式
 
 + 接口测试：
-    + test\_set.cpp：测试set接口，用例源于《STL源码剖析》第236页
+    + test\_set.cpp：测试skip\_set接口，用例源于《STL源码剖析》第236页。
     ```shell
     g++ test_set.cpp -std=c++17 && ./a.out
     ```
-    + test\_map.cpp：测试map接口，用例源于《STL源码剖析》第242页
+    + test\_map.cpp：测试skip\_map接口，用例源于《STL源码剖析》第242页。
     ```shell
     g++ test_map.cpp -std=c++17 && ./a.out
     ```
 
 + 压力测试：
-    + stress.cpp：测试插入和查找的效率
+    + stress.cpp：测试插入和查找的效率，需要提供数据量和线程数作为命令行参数。
     ```shell
     g++ stress.cpp -o stress -std=c++17 -D NDEBUG
     
