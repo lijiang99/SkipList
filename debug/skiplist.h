@@ -160,7 +160,7 @@ class skiplist {
 		skiplist<Key, Value, KeyOfValue, Compare>& operator=(skiplist<Key, Value, KeyOfValue, Compare> rhs) {
 			swap(rhs);
 			return *this;
-		};
+		}
 		// 交换操作
 		void swap(skiplist<Key, Value, KeyOfValue, Compare> &rhs);
 
@@ -304,10 +304,7 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) 
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 template <typename InputIterator>
 void skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(InputIterator first, InputIterator last) {
-	while (first != last) {
-		insert_unique(*first);
-		++first;
-	}
+	while (first != last) { insert_unique(*first); ++first; }
 }
 
 /*

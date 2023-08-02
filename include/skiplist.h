@@ -146,7 +146,7 @@ class skiplist {
 		skiplist<Key, Value, KeyOfValue, Compare>& operator=(skiplist<Key, Value, KeyOfValue, Compare> rhs) {
 			swap(rhs);
 			return *this;
-		};
+		}
 		// 交换操作
 		void swap(skiplist<Key, Value, KeyOfValue, Compare> &rhs);
 
@@ -257,9 +257,9 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) 
 	current = current->forward[0];
 	
 	// 若待插入的key已经存在于跳表中，则不插入新值
-	if (current && !key_compare(KeyOfValue()(val), key(current))) {
+	if (current && !key_compare(KeyOfValue()(val), key(current)))
 		return std::pair<iterator, bool>(current, false);
-	}
+
 	return std::pair<iterator, bool>(__insert(update, val), true);
 }
 
@@ -267,10 +267,7 @@ skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(const value_type &val) 
 template <typename Key, typename Value, typename KeyOfValue, typename Compare>
 template <typename InputIterator>
 void skiplist<Key, Value, KeyOfValue, Compare>::insert_unique(InputIterator first, InputIterator last) {
-	while (first != last) {
-		insert_unique(*first);
-		++first;
-	}
+	while (first != last) { insert_unique(*first); ++first; }
 }
 
 /*
@@ -416,7 +413,6 @@ void skiplist<Key, Value, KeyOfValue, Compare>::__erase(const key_type &k) {
 		
 		// 更新跳表中的节点总数
 		--node_count;
-
 	}
 }
 
